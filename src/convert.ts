@@ -3,9 +3,19 @@
 
 import type { Message as PiMessage } from "@mariozechner/pi-ai";
 import type { Message as SessionMessage } from "cc-session-io";
-import { pascalCase } from "change-case";
 
 export const PROVIDER_ID = "claude-bridge";
+
+// Inlined to drop the change-case dependency. Splits on non-alphanumeric and
+// camelCase boundaries, then PascalCases each word.
+function pascalCase(input: string): string {
+	return input
+		.split(/[^a-zA-Z0-9]+/)
+		.flatMap((part) => part.split(/(?=[A-Z][a-z])|(?<=[a-z])(?=[A-Z])/))
+		.filter(Boolean)
+		.map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+		.join("");
+}
 
 export const PI_TO_SDK_TOOL_NAME: Record<string, string> = {
 	read: "Read", write: "Write", edit: "Edit", bash: "Bash",
