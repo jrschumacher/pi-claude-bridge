@@ -5,7 +5,7 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { extractSkillsBlock } from "../src/skills.js";
+import { extractSkillsBlock, rewritePiSystemPrompt } from "../src/skills.js";
 
 // Realistic pi system prompt with skills block
 const SYSTEM_PROMPT = `You are a coding assistant.
@@ -59,5 +59,25 @@ describe("skills block extraction", () => {
 	it("malformed: start marker but no end marker → undefined", () => {
 		const partial = "The following skills provide specialized instructions for specific tasks.\nBut no closing tag.";
 		assert.strictEqual(extractSkillsBlock(partial), undefined);
+	});
+});
+
+describe("rewritePiSystemPrompt", () => {
+	it("rewrites the skills block in place, leaving surrounding content untouched", () => {
+		const result = rewritePiSystemPrompt(SYSTEM_PROMPT);
+		assert.ok(result.startsWith("You are a coding assistant."));
+		assert.ok(result.endsWith("Some other system prompt content after skills."));
+		assert.ok(result.includes("Use the read tool (mcp__custom-tools__read) to load a skill's file"));
+		assert.ok(!result.includes("Use the read tool to load a skill's file when"));
+	});
+
+	it("returns prompt unchanged when no skills block is present", () => {
+		const plain = "You are a coding assistant. No skills here.";
+		assert.strictEqual(rewritePiSystemPrompt(plain), plain);
+	});
+
+	it("returns prompt unchanged when end marker is missing", () => {
+		const broken = "The following skills provide specialized instructions for specific tasks.\nNo end tag.";
+		assert.strictEqual(rewritePiSystemPrompt(broken), broken);
 	});
 });

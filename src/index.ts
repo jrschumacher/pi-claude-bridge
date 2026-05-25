@@ -11,7 +11,7 @@ import { homedir } from "os";
 import { dirname, join } from "path";
 import { PROVIDER_ID, messageContentToText, convertPiMessages } from "./convert.js";
 import { buildModels, resolveModelId as _resolveModelId } from "./models.js";
-import { MCP_SERVER_NAME, MCP_TOOL_PREFIX, extractSkillsBlock } from "./skills.js";
+import { MCP_SERVER_NAME, MCP_TOOL_PREFIX, extractSkillsBlock, rewritePiSystemPrompt } from "./skills.js";
 import { verifyWrittenSession as _verifyWrittenSession } from "./session-verify.js";
 import { extractAllToolResults as _extractAllToolResults, type McpResult } from "./extract-tool-results.js";
 import { QueryContext, ctx, stackDepth, pushContext, popContext } from "./query-state.js";
@@ -955,20 +955,47 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 		: promptText;
 	const mcpServers = buildMcpServers(mcpTools, ctx());
 	const providerSettings = loadConfig(cwd).provider ?? {};
+
+	// Resolve system-prompt mode. Default "pi" forwards pi's own prompt to Claude
+	// verbatim (matching how pi treats every other model). "preset" keeps the
+	// legacy claude_code preset + AGENTS.md/skills append. A string replaces the
+	// prompt entirely. If "pi" is selected but context.systemPrompt is empty,
+	// fall back to the preset so we never send an empty system prompt.
+	const systemPromptSetting = providerSettings.systemPrompt ?? "pi";
+	let resolvedMode: "pi" | "preset" | "custom";
+	if (systemPromptSetting === "preset") resolvedMode = "preset";
+	else if (systemPromptSetting === "pi") resolvedMode = context.systemPrompt ? "pi" : "preset";
+	else resolvedMode = "custom";
+
 	const appendSystemPrompt = providerSettings.appendSystemPrompt !== false;
-	const agentsAppend = appendSystemPrompt ? extractAgentsAppend() : undefined;
-	const skillsAppend = appendSystemPrompt ? extractSkillsBlock(context.systemPrompt) : undefined;
+	const agentsAppend = resolvedMode === "preset" && appendSystemPrompt ? extractAgentsAppend() : undefined;
+	const skillsAppend = resolvedMode === "preset" && appendSystemPrompt ? extractSkillsBlock(context.systemPrompt) : undefined;
 	const appendParts = [agentsAppend, skillsAppend].filter((part): part is string => Boolean(part));
 	const systemPromptAppend = appendParts.length > 0 ? appendParts.join("\n\n") : undefined;
+
+	let resolvedSystemPrompt: NonNullable<Parameters<typeof query>[0]["options"]>["systemPrompt"];
+	if (resolvedMode === "pi") {
+		resolvedSystemPrompt = rewritePiSystemPrompt(context.systemPrompt!);
+	} else if (resolvedMode === "custom") {
+		resolvedSystemPrompt = systemPromptSetting;
+	} else {
+		resolvedSystemPrompt = {
+			type: "preset", preset: "claude_code",
+			append: systemPromptAppend ? systemPromptAppend : undefined,
+		};
+	}
 
 	// MCP auto-loading suppression: CC reads MCP servers from ~/.claude.json (top-level
 	// + per-project) and .mcp.json. Since pi executes tools (not CC), those are pure
 	// token overhead. --strict-mcp-config tells the binary to use ONLY mcpServers passed
 	// programmatically and ignore filesystem MCP entries — applied unconditionally because
 	// settingSources=undefined does NOT give isolation (the CC default loads all sources).
-	const settingSources: SettingSource[] | undefined = appendSystemPrompt
-		? undefined
-		: providerSettings.settingSources ?? ["user", "project"];
+	// In preset mode with append enabled, defer to CC's default settingSources;
+	// otherwise (pi/custom prompts, or preset without append) lock to user+project.
+	const settingSources: SettingSource[] | undefined =
+		resolvedMode === "preset" && appendSystemPrompt
+			? undefined
+			: providerSettings.settingSources ?? ["user", "project"];
 	const strictMcpConfigEnabled = providerSettings.strictMcpConfig !== false;
 	const claudeExecutable = providerSettings.pathToClaudeCodeExecutable;
 
@@ -1003,10 +1030,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 		tools: [],
 		permissionMode: "bypassPermissions",
 		includePartialMessages: true,
-		systemPrompt: {
-			type: "preset", preset: "claude_code",
-			append: systemPromptAppend ? systemPromptAppend : undefined,
-		},
+		systemPrompt: resolvedSystemPrompt,
 		extraArgs,
 		...(effort ? { effort } : {}),
 		...(settingSources ? { settingSources } : {}),
@@ -1019,7 +1043,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	debug("provider: fresh query",
 		`model=${model.id} msgs=${context.messages.length} tools=${mcpTools.length}`,
 		`resume=${resumeSessionId?.slice(0, 8) ?? "none"} effort=${effort ?? "default"}`,
-		`appendSys=${appendSystemPrompt} strictMcp=${strictMcpConfigEnabled}`,
+		`sysPromptMode=${resolvedMode} strictMcp=${strictMcpConfigEnabled}`,
 		`prompt=${promptText.slice(0, 60)}${promptBlocks ? " [+images]" : ""}`);
 
 	// 3. Start SDK query and claim it for this context

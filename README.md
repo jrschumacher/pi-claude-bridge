@@ -75,8 +75,12 @@ Config: `~/.pi/agent/claude-bridge.json` (global) or `.pi/claude-bridge.json` (p
 - `appendSkills` — forward pi's skills block into the system prompt (default `true`)
 
 `provider` (low-level SDK plumbing, most users can ignore):
-- `appendSystemPrompt` — append pi's AGENTS.md and skills (default `true`)
-- `settingSources` — CC filesystem settings to load; only applied when `appendSystemPrompt: false`
+- `systemPrompt` — how to set Claude's system prompt (default `"pi"`):
+  - `"pi"` — forward pi's own system prompt verbatim (with the skills-block tool-name rewrite). Treats Claude like any other model pi drives, so the agent stays aware that it's running inside the pi harness. This is the default and matches how pi behaves with every other provider.
+  - `"preset"` — legacy behavior: use Anthropic's `claude_code` preset, optionally appending pi's AGENTS.md and skills block (gated by `appendSystemPrompt`).
+  - any other string — use that string as the system prompt verbatim (no append, no rewrite).
+- `appendSystemPrompt` — only used in `"preset"` mode: append pi's AGENTS.md and skills (default `true`). Ignored in `"pi"` or custom-string mode.
+- `settingSources` — CC filesystem settings to load; only applied when not in `"preset"`-with-append mode
 - `strictMcpConfig` — block MCP servers from `~/.claude.json` / `.mcp.json` (default `true`). Cloud MCP (Gmail/Drive via claude.ai OAuth) is always blocked.
 - `pathToClaudeCodeExecutable` — path to the `claude` binary. Required on **NixOS** (and other non-FHS systems) where the SDK's bundled musl/glibc binaries can't run. Set to your Nix-installed binary, e.g. `"/home/you/.nix-profile/bin/claude"`.
 
