@@ -22,18 +22,3 @@ export function rewriteSkillsBlock(skillsBlock: string): string {
 		`Use the read tool (mcp__${MCP_SERVER_NAME}__read) to load a skill's file`,
 	);
 }
-
-// Apply rewriteSkillsBlock to the skills section of pi's full system prompt,
-// leaving the rest of the prompt unchanged. Used when forwarding pi's prompt
-// verbatim to Claude so the agent sees the MCP-prefixed read tool name.
-export function rewritePiSystemPrompt(systemPrompt: string): string {
-	const startMarker = "The following skills provide specialized instructions for specific tasks.";
-	const endMarker = "</available_skills>";
-	const start = systemPrompt.indexOf(startMarker);
-	if (start === -1) return systemPrompt;
-	const end = systemPrompt.indexOf(endMarker, start);
-	if (end === -1) return systemPrompt;
-	const blockEnd = end + endMarker.length;
-	const rewritten = rewriteSkillsBlock(systemPrompt.slice(start, blockEnd));
-	return systemPrompt.slice(0, start) + rewritten + systemPrompt.slice(blockEnd);
-}

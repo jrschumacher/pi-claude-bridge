@@ -22,19 +22,8 @@ export interface Config {
 	/** Low-level Claude Agent SDK plumbing. Most users won't need these. */
 	provider?: {
 		/**
-		 * How to set the system prompt for Claude.
-		 * - "pi" (default): forward pi's own system prompt verbatim (with the
-		 *   skills-block tool-name rewrite). Treats Claude like any other model
-		 *   pi drives, so the agent stays aware of the pi harness.
-		 * - "preset": use Anthropic's claude_code preset, optionally with
-		 *   AGENTS.md + skills-block appended (legacy behavior).
-		 * - a string: use this exact string as the system prompt (no append).
-		 */
-		systemPrompt?: "pi" | "preset" | string;
-		/**
-		 * Only affects "preset" mode: when false, skip building the
-		 * AGENTS.md + skills-block append. Has no effect in "pi" or custom
-		 * string mode.
+		 * When false, skip appending pi's AGENTS.md and skills block to the
+		 * claude_code preset. The pi-identity blurb is always appended. Default true.
 		 */
 		appendSystemPrompt?: boolean;
 		settingSources?: SettingSource[];

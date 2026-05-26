@@ -74,13 +74,15 @@ Config: `~/.pi/agent/claude-bridge.json` (global) or `.pi/claude-bridge.json` (p
 - `allowFullMode` — allow `mode: "full"`; set `false` to lock it out
 - `appendSkills` — forward pi's skills block into the system prompt (default `true`)
 
+### System prompt
+
+The bridge always uses Anthropic's `claude_code` preset as the system prompt, with a short pi-identity blurb appended so the model knows it's running inside the pi harness. AGENTS.md and the skills block are also appended when `appendSystemPrompt` is enabled.
+
+This is **not configurable**. Anthropic classifies third-party clients by shape-matching the system prompt content; anything beyond a small append on the preset (e.g. forwarding pi's full prompt, or using a custom string) downgrades the request to "extra usage" billing and typically 400s on subscription plans. Since the whole point of this extension is to drive Claude with your Claude subscription, modes that break that billing path aren't exposed.
+
 `provider` (low-level SDK plumbing, most users can ignore):
-- `systemPrompt` — how to set Claude's system prompt (default `"preset"`):
-  - `"preset"` (default) — use Anthropic's `claude_code` preset and append a short pi-identity blurb so the model knows it's running inside the pi harness, plus AGENTS.md and skills block (gated by `appendSystemPrompt`). Keeps the preset's first-party fingerprint so subscription billing works.
-  - `"pi"` — forward pi's *full* system prompt as an `append` on the preset. The model sees pi verbatim, but Anthropic's classifier shape-matches the whole prompt and downgrades the request to "extra usage" billing (typically 400s on subscription plans). Only use this with API-key auth, or if you've explicitly bought extra-usage credits.
-  - any other string — use that string as the system prompt verbatim (no preset, no append, no rewrite). Also classified third-party.
-- `appendSystemPrompt` — only used in `"preset"` mode: append pi's AGENTS.md and skills (default `true`). Ignored in `"pi"` or custom-string mode.
-- `settingSources` — CC filesystem settings to load; only applied when not in `"preset"`-with-append mode
+- `appendSystemPrompt` — append pi's AGENTS.md and skills block to the preset (default `true`). The pi-identity blurb is always appended regardless.
+- `settingSources` — CC filesystem settings to load; only applied when `appendSystemPrompt` is `false`.
 - `strictMcpConfig` — block MCP servers from `~/.claude.json` / `.mcp.json` (default `true`). Cloud MCP (Gmail/Drive via claude.ai OAuth) is always blocked.
 - `pathToClaudeCodeExecutable` — path to the `claude` binary. Required on **NixOS** (and other non-FHS systems) where the SDK's bundled musl/glibc binaries can't run. Set to your Nix-installed binary, e.g. `"/home/you/.nix-profile/bin/claude"`.
 

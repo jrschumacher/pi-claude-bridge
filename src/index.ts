@@ -11,7 +11,7 @@ import { homedir } from "os";
 import { dirname, join } from "path";
 import { PROVIDER_ID, messageContentToText, convertPiMessages } from "./convert.js";
 import { buildModels, resolveModelId as _resolveModelId } from "./models.js";
-import { MCP_SERVER_NAME, MCP_TOOL_PREFIX, extractSkillsBlock, rewritePiSystemPrompt } from "./skills.js";
+import { MCP_SERVER_NAME, MCP_TOOL_PREFIX, extractSkillsBlock } from "./skills.js";
 import { verifyWrittenSession as _verifyWrittenSession } from "./session-verify.js";
 import { extractAllToolResults as _extractAllToolResults, type McpResult } from "./extract-tool-results.js";
 import { QueryContext, ctx, stackDepth, pushContext, popContext } from "./query-state.js";
@@ -956,55 +956,30 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	const mcpServers = buildMcpServers(mcpTools, ctx());
 	const providerSettings = loadConfig(cwd).provider ?? {};
 
-	// Resolve system-prompt mode. Default "preset" keeps Anthropic's claude_code
-	// preset (first-party billing) plus a short pi-identity blurb + AGENTS.md +
-	// skills block as append content. "pi" forwards pi's *full* system prompt
-	// as an append — the model sees pi verbatim, but Anthropic's classifier
-	// shape-matches the whole prompt and downgrades subscription requests to
-	// "extra usage" billing (typically 400s). Only use "pi" with API-key auth
-	// or if you've explicitly bought extra-usage credits. A custom string
-	// replaces the prompt entirely (also classified third-party).
-	const systemPromptSetting = providerSettings.systemPrompt ?? "preset";
-	let resolvedMode: "pi" | "preset" | "custom";
-	if (systemPromptSetting === "preset") resolvedMode = "preset";
-	else if (systemPromptSetting === "pi") resolvedMode = context.systemPrompt ? "pi" : "preset";
-	else resolvedMode = "custom";
-
+	// Always use Anthropic's claude_code preset — it's the only shape that
+	// preserves first-party subscription billing. Anthropic's third-party
+	// classifier shape-matches the whole system prompt; replacing or heavily
+	// rewriting it downgrades requests to "extra usage" billing or 400s
+	// outright. We layer a short pi-identity blurb plus AGENTS.md + skills
+	// as the append — small enough to ride in the runtime zone without
+	// shifting the embedding outside the first-party manifold.
 	const appendSystemPrompt = providerSettings.appendSystemPrompt !== false;
-	const identityBlurb = resolvedMode === "preset"
-		? "You are running inside the pi agent harness, not standalone Claude Code. Pi orchestrates the conversation and executes tools on your behalf; the tools you see (prefixed `" + MCP_TOOL_PREFIX + "`) are pi tools routed through MCP, not Claude Code's native tools. Treat pi's instructions and any forwarded context as authoritative."
-		: undefined;
-	const agentsAppend = resolvedMode === "preset" && appendSystemPrompt ? extractAgentsAppend() : undefined;
-	const skillsAppend = resolvedMode === "preset" && appendSystemPrompt ? extractSkillsBlock(context.systemPrompt) : undefined;
+	const identityBlurb = "You are running inside the pi agent harness, not standalone Claude Code. Pi orchestrates the conversation and executes tools on your behalf; the tools you see (prefixed `" + MCP_TOOL_PREFIX + "`) are pi tools routed through MCP, not Claude Code's native tools. Treat pi's instructions and any forwarded context as authoritative.";
+	const agentsAppend = appendSystemPrompt ? extractAgentsAppend() : undefined;
+	const skillsAppend = appendSystemPrompt ? extractSkillsBlock(context.systemPrompt) : undefined;
 	const appendParts = [identityBlurb, agentsAppend, skillsAppend].filter((part): part is string => Boolean(part));
-	const systemPromptAppend = appendParts.length > 0 ? appendParts.join("\n\n") : undefined;
-
-	let resolvedSystemPrompt: NonNullable<Parameters<typeof query>[0]["options"]>["systemPrompt"];
-	if (resolvedMode === "pi") {
-		resolvedSystemPrompt = {
-			type: "preset", preset: "claude_code",
-			append: rewritePiSystemPrompt(context.systemPrompt!),
-		};
-	} else if (resolvedMode === "custom") {
-		resolvedSystemPrompt = systemPromptSetting;
-	} else {
-		resolvedSystemPrompt = {
-			type: "preset", preset: "claude_code",
-			append: systemPromptAppend ? systemPromptAppend : undefined,
-		};
-	}
+	const systemPromptAppend = appendParts.join("\n\n");
 
 	// MCP auto-loading suppression: CC reads MCP servers from ~/.claude.json (top-level
 	// + per-project) and .mcp.json. Since pi executes tools (not CC), those are pure
 	// token overhead. --strict-mcp-config tells the binary to use ONLY mcpServers passed
 	// programmatically and ignore filesystem MCP entries — applied unconditionally because
 	// settingSources=undefined does NOT give isolation (the CC default loads all sources).
-	// In preset mode with append enabled, defer to CC's default settingSources;
-	// otherwise (pi/custom prompts, or preset without append) lock to user+project.
-	const settingSources: SettingSource[] | undefined =
-		resolvedMode === "preset" && appendSystemPrompt
-			? undefined
-			: providerSettings.settingSources ?? ["user", "project"];
+	// With the append enabled, defer to CC's default settingSources; otherwise
+	// (append disabled) lock to user+project.
+	const settingSources: SettingSource[] | undefined = appendSystemPrompt
+		? undefined
+		: providerSettings.settingSources ?? ["user", "project"];
 	const strictMcpConfigEnabled = providerSettings.strictMcpConfig !== false;
 	const claudeExecutable = providerSettings.pathToClaudeCodeExecutable;
 
@@ -1039,7 +1014,10 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 		tools: [],
 		permissionMode: "bypassPermissions",
 		includePartialMessages: true,
-		systemPrompt: resolvedSystemPrompt,
+		systemPrompt: {
+			type: "preset", preset: "claude_code",
+			append: systemPromptAppend,
+		},
 		extraArgs,
 		...(effort ? { effort } : {}),
 		...(settingSources ? { settingSources } : {}),
@@ -1052,7 +1030,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	debug("provider: fresh query",
 		`model=${model.id} msgs=${context.messages.length} tools=${mcpTools.length}`,
 		`resume=${resumeSessionId?.slice(0, 8) ?? "none"} effort=${effort ?? "default"}`,
-		`sysPromptMode=${resolvedMode} strictMcp=${strictMcpConfigEnabled}`,
+		`strictMcp=${strictMcpConfigEnabled}`,
 		`prompt=${promptText.slice(0, 60)}${promptBlocks ? " [+images]" : ""}`);
 
 	// 3. Start SDK query and claim it for this context
