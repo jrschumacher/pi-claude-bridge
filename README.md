@@ -76,9 +76,9 @@ Config: `~/.pi/agent/claude-bridge.json` (global) or `.pi/claude-bridge.json` (p
 
 `provider` (low-level SDK plumbing, most users can ignore):
 - `systemPrompt` — how to set Claude's system prompt (default `"pi"`):
-  - `"pi"` — forward pi's own system prompt verbatim (with the skills-block tool-name rewrite). Treats Claude like any other model pi drives, so the agent stays aware that it's running inside the pi harness. This is the default and matches how pi behaves with every other provider.
-  - `"preset"` — legacy behavior: use Anthropic's `claude_code` preset, optionally appending pi's AGENTS.md and skills block (gated by `appendSystemPrompt`).
-  - any other string — use that string as the system prompt verbatim (no append, no rewrite).
+  - `"pi"` — forward pi's own system prompt to Claude as an `append` on the `claude_code` preset (with the skills-block tool-name rewrite). The model sees pi's full identity and harness instructions while the request keeps the preset's first-party fingerprint. **Why the preset matters:** Anthropic classifies third-party clients by pattern-matching the preset's static prefix; requests that omit it get billed against "extra usage" instead of plan limits and may 400 outright. This is the default.
+  - `"preset"` — legacy behavior: use Anthropic's `claude_code` preset, optionally appending pi's AGENTS.md and skills block (gated by `appendSystemPrompt`). Does not forward the rest of pi's prompt.
+  - any other string — use that string as the system prompt verbatim (no preset, no append, no rewrite). Will be classified third-party by Anthropic and bills against extra usage.
 - `appendSystemPrompt` — only used in `"preset"` mode: append pi's AGENTS.md and skills (default `true`). Ignored in `"pi"` or custom-string mode.
 - `settingSources` — CC filesystem settings to load; only applied when not in `"preset"`-with-append mode
 - `strictMcpConfig` — block MCP servers from `~/.claude.json` / `.mcp.json` (default `true`). Cloud MCP (Gmail/Drive via claude.ai OAuth) is always blocked.

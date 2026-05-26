@@ -956,11 +956,14 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	const mcpServers = buildMcpServers(mcpTools, ctx());
 	const providerSettings = loadConfig(cwd).provider ?? {};
 
-	// Resolve system-prompt mode. Default "pi" forwards pi's own prompt to Claude
-	// verbatim (matching how pi treats every other model). "preset" keeps the
-	// legacy claude_code preset + AGENTS.md/skills append. A string replaces the
-	// prompt entirely. If "pi" is selected but context.systemPrompt is empty,
-	// fall back to the preset so we never send an empty system prompt.
+	// Resolve system-prompt mode. Default "pi" forwards pi's own prompt as an
+	// `append` on the claude_code preset — Anthropic classifies third-party
+	// clients by pattern-matching the preset's static prefix, so requests that
+	// omit it get billed against "extra usage" instead of plan limits. Keeping
+	// the preset preserves first-party billing while still letting the model
+	// see pi's full identity / harness instructions. "preset" keeps the legacy
+	// preset + AGENTS.md/skills append (no full pi prompt). A custom string
+	// replaces the prompt entirely and will be classified third-party.
 	const systemPromptSetting = providerSettings.systemPrompt ?? "pi";
 	let resolvedMode: "pi" | "preset" | "custom";
 	if (systemPromptSetting === "preset") resolvedMode = "preset";
@@ -975,7 +978,10 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 
 	let resolvedSystemPrompt: NonNullable<Parameters<typeof query>[0]["options"]>["systemPrompt"];
 	if (resolvedMode === "pi") {
-		resolvedSystemPrompt = rewritePiSystemPrompt(context.systemPrompt!);
+		resolvedSystemPrompt = {
+			type: "preset", preset: "claude_code",
+			append: rewritePiSystemPrompt(context.systemPrompt!),
+		};
 	} else if (resolvedMode === "custom") {
 		resolvedSystemPrompt = systemPromptSetting;
 	} else {
