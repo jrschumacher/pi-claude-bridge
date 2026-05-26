@@ -75,10 +75,10 @@ Config: `~/.pi/agent/claude-bridge.json` (global) or `.pi/claude-bridge.json` (p
 - `appendSkills` — forward pi's skills block into the system prompt (default `true`)
 
 `provider` (low-level SDK plumbing, most users can ignore):
-- `systemPrompt` — how to set Claude's system prompt (default `"pi"`):
-  - `"pi"` — forward pi's own system prompt to Claude as an `append` on the `claude_code` preset (with the skills-block tool-name rewrite). The model sees pi's full identity and harness instructions while the request keeps the preset's first-party fingerprint. **Why the preset matters:** Anthropic classifies third-party clients by pattern-matching the preset's static prefix; requests that omit it get billed against "extra usage" instead of plan limits and may 400 outright. This is the default.
-  - `"preset"` — legacy behavior: use Anthropic's `claude_code` preset, optionally appending pi's AGENTS.md and skills block (gated by `appendSystemPrompt`). Does not forward the rest of pi's prompt.
-  - any other string — use that string as the system prompt verbatim (no preset, no append, no rewrite). Will be classified third-party by Anthropic and bills against extra usage.
+- `systemPrompt` — how to set Claude's system prompt (default `"preset"`):
+  - `"preset"` (default) — use Anthropic's `claude_code` preset and append a short pi-identity blurb so the model knows it's running inside the pi harness, plus AGENTS.md and skills block (gated by `appendSystemPrompt`). Keeps the preset's first-party fingerprint so subscription billing works.
+  - `"pi"` — forward pi's *full* system prompt as an `append` on the preset. The model sees pi verbatim, but Anthropic's classifier shape-matches the whole prompt and downgrades the request to "extra usage" billing (typically 400s on subscription plans). Only use this with API-key auth, or if you've explicitly bought extra-usage credits.
+  - any other string — use that string as the system prompt verbatim (no preset, no append, no rewrite). Also classified third-party.
 - `appendSystemPrompt` — only used in `"preset"` mode: append pi's AGENTS.md and skills (default `true`). Ignored in `"pi"` or custom-string mode.
 - `settingSources` — CC filesystem settings to load; only applied when not in `"preset"`-with-append mode
 - `strictMcpConfig` — block MCP servers from `~/.claude.json` / `.mcp.json` (default `true`). Cloud MCP (Gmail/Drive via claude.ai OAuth) is always blocked.

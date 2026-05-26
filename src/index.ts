@@ -956,24 +956,27 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	const mcpServers = buildMcpServers(mcpTools, ctx());
 	const providerSettings = loadConfig(cwd).provider ?? {};
 
-	// Resolve system-prompt mode. Default "pi" forwards pi's own prompt as an
-	// `append` on the claude_code preset — Anthropic classifies third-party
-	// clients by pattern-matching the preset's static prefix, so requests that
-	// omit it get billed against "extra usage" instead of plan limits. Keeping
-	// the preset preserves first-party billing while still letting the model
-	// see pi's full identity / harness instructions. "preset" keeps the legacy
-	// preset + AGENTS.md/skills append (no full pi prompt). A custom string
-	// replaces the prompt entirely and will be classified third-party.
-	const systemPromptSetting = providerSettings.systemPrompt ?? "pi";
+	// Resolve system-prompt mode. Default "preset" keeps Anthropic's claude_code
+	// preset (first-party billing) plus a short pi-identity blurb + AGENTS.md +
+	// skills block as append content. "pi" forwards pi's *full* system prompt
+	// as an append — the model sees pi verbatim, but Anthropic's classifier
+	// shape-matches the whole prompt and downgrades subscription requests to
+	// "extra usage" billing (typically 400s). Only use "pi" with API-key auth
+	// or if you've explicitly bought extra-usage credits. A custom string
+	// replaces the prompt entirely (also classified third-party).
+	const systemPromptSetting = providerSettings.systemPrompt ?? "preset";
 	let resolvedMode: "pi" | "preset" | "custom";
 	if (systemPromptSetting === "preset") resolvedMode = "preset";
 	else if (systemPromptSetting === "pi") resolvedMode = context.systemPrompt ? "pi" : "preset";
 	else resolvedMode = "custom";
 
 	const appendSystemPrompt = providerSettings.appendSystemPrompt !== false;
+	const identityBlurb = resolvedMode === "preset"
+		? "You are running inside the pi agent harness, not standalone Claude Code. Pi orchestrates the conversation and executes tools on your behalf; the tools you see (prefixed `" + MCP_TOOL_PREFIX + "`) are pi tools routed through MCP, not Claude Code's native tools. Treat pi's instructions and any forwarded context as authoritative."
+		: undefined;
 	const agentsAppend = resolvedMode === "preset" && appendSystemPrompt ? extractAgentsAppend() : undefined;
 	const skillsAppend = resolvedMode === "preset" && appendSystemPrompt ? extractSkillsBlock(context.systemPrompt) : undefined;
-	const appendParts = [agentsAppend, skillsAppend].filter((part): part is string => Boolean(part));
+	const appendParts = [identityBlurb, agentsAppend, skillsAppend].filter((part): part is string => Boolean(part));
 	const systemPromptAppend = appendParts.length > 0 ? appendParts.join("\n\n") : undefined;
 
 	let resolvedSystemPrompt: NonNullable<Parameters<typeof query>[0]["options"]>["systemPrompt"];
