@@ -38,13 +38,14 @@
     "typebox": "1.1.38"
   },
   "peerDependencies": {
-    "@mariozechner/pi-ai": "*",
-    "@mariozechner/pi-coding-agent": "*"
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "0.96.0",
-    "@mariozechner/pi-ai": "0.73.1",
-    "@mariozechner/pi-coding-agent": "0.73.1",
+    "@earendil-works/pi-ai": "0.77.0",
+    "@earendil-works/pi-coding-agent": "0.77.0",
+    "@earendil-works/pi-tui": "0.77.0",
     "@types/node": "^25.9.0",
     "tsx": "^4.22.2",
     "typescript": "6.0.3"
