@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Self-owned model list, decoupled from pi-ai** — the bridge now ships a baked-in `DEFAULT_MODELS` list (`src/models.ts`) instead of deriving the picker from pi-ai's `getModels("anthropic")`. Models are available regardless of the host pi / pi-ai version (no more silently dropping ids the bundled pi-ai doesn't know). Users can add or override models via the `models` field in `claude-bridge.json`: a new id is prepended (becoming the default and winning shortcut resolution), and a matching id overrides the default's fields in place. Global entries apply first, project entries win on id collisions.
+- **Migrate to `@earendil-works/*` packages** — switched from `@mariozechner/pi-ai`, `@mariozechner/pi-coding-agent`, and `@mariozechner/pi-tui` to the renamed `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, and `@earendil-works/pi-tui`, pinned at `0.77.0`. Same export surface; mechanical import-path swap.
+- **Add: claude-opus-4-8 model** — `@earendil-works/pi-ai@0.77.0` defines `claude-opus-4-8` natively, so it's now selectable. The `opus` shortcut defaults to 4.8; earlier opus versions (4.7, 4.6) remain selectable by explicit ID.
+- **Note for installers** — `0.77.0` was published 2026-05-28. The global `min-release-age=7` npm guard blocks installing it until ~2026-06-04, so until then `npm install` must pass `--min-release-age=0`. This bypass is intentional and temporary — it self-resolves once 0.77.0 ages past the 7-day window.
+
 ## 0.4.0 — 2026-05-04
 
 - **Fix: Opus 4.7 + xhigh sent wrong effort to SDK** — pi-ai 0.72 ships per-model `thinkingLevelMap` overrides (e.g. `claude-opus-4-7` declares `xhigh→xhigh`, not `xhigh→max`), but our hardcoded `REASONING_TO_EFFORT` table ignored them. Effort lookup now consults `model.thinkingLevelMap` first, falls back to the table for older pi-ai or unmapped levels. Forwarded `thinkingLevelMap` through `buildModels` projection.

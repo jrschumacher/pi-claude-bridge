@@ -1,16 +1,16 @@
-import { calculateCost, getModels, StringEnum, type AssistantMessage, type AssistantMessageEventStream, type Context, type Model, type SimpleStreamOptions, type Tool } from "@mariozechner/pi-ai";
-import * as piAi from "@mariozechner/pi-ai";
-import { buildSessionContext, keyHint, type ExtensionAPI, type ExtensionUIContext } from "@mariozechner/pi-coding-agent";
+import { calculateCost, StringEnum, type AssistantMessage, type AssistantMessageEventStream, type Context, type Model, type SimpleStreamOptions, type Tool } from "@earendil-works/pi-ai";
+import * as piAi from "@earendil-works/pi-ai";
+import { buildSessionContext, keyHint, type ExtensionAPI, type ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { createSdkMcpServer, query, type EffortLevel, type SDKMessage, type SDKUserMessage, type SettingSource } from "@anthropic-ai/claude-agent-sdk";
 import type { Base64ImageSource, ContentBlockParam, MessageParam } from "@anthropic-ai/sdk/resources";
 import { Type } from "typebox";
-import { Text } from "@mariozechner/pi-tui";
+import { Text } from "@earendil-works/pi-tui";
 import { createSession, deleteSession, repairToolPairing } from "cc-session-io";
 import { appendFileSync, mkdirSync, realpathSync, statSync } from "fs";
 import { homedir } from "os";
 import { dirname, join } from "path";
 import { PROVIDER_ID, messageContentToText, convertPiMessages } from "./convert.js";
-import { buildModels, resolveModelId as _resolveModelId } from "./models.js";
+import { DEFAULT_MODELS, mergeModels, buildModels, resolveModelId as _resolveModelId } from "./models.js";
 import { MCP_SERVER_NAME, MCP_TOOL_PREFIX, extractSkillsBlock } from "./skills.js";
 import { verifyWrittenSession as _verifyWrittenSession } from "./session-verify.js";
 import { extractAllToolResults as _extractAllToolResults, type McpResult } from "./extract-tool-results.js";
@@ -115,8 +115,10 @@ const SDK_TO_PI_TOOL_NAME: Record<string, string> = {
 	read: "read", write: "write", edit: "edit", bash: "bash",
 };
 
-// MODELS is buildModels(getModels("anthropic")) — projection kept in models.js.
-const MODELS = buildModels(getModels("anthropic"));
+// MODELS is built from the self-owned DEFAULT_MODELS list merged with any config
+// `models` overrides (see models.js). Populated in the activation function (where
+// config is available) and consumed by registration + resolveModelId at runtime.
+let MODELS: ReturnType<typeof buildModels> = buildModels(DEFAULT_MODELS);
 
 function resolveModelId(input: string): string {
 	return _resolveModelId(MODELS, input);
@@ -997,6 +999,14 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 	// Force summarized so thinking_delta events arrive. See anthropics/claude-agent-sdk-python#830.
 	if (effort) extraArgs["thinking-display"] = "summarized";
 
+	// 1M context: the larger window is a gated beta. When a model is configured
+	// with a >200K contextWindow (the declaration of intent — opt up per-model via
+	// claude-bridge.json `models`), send the beta so Claude Code actually accepts
+	// the larger prompt. Without it the API caps input at 200K and pi — which sizes
+	// compaction to contextWindow — would overflow it ("Prompt is too long").
+	const enable1mContext = (model as { contextWindow?: number }).contextWindow != null
+		&& (model as { contextWindow?: number }).contextWindow! > 200_000;
+
 	// Suppress claude.ai cloud MCP servers (Figma/Canva/etc. auto-discovered via OAuth
 	// when the user is logged into Anthropic). These are a separate code path from
 	// filesystem MCP and are NOT blocked by --strict-mcp-config or settingSources=undefined.
@@ -1019,6 +1029,7 @@ function streamClaudeAgentSdk(model: Model<any>, context: Context, options?: Sim
 			append: systemPromptAppend,
 		},
 		extraArgs,
+		...(enable1mContext ? { betas: ["context-1m-2025-08-07"] } : {}),
 		...(effort ? { effort } : {}),
 		...(settingSources ? { settingSources } : {}),
 		...(mcpServers ? { mcpServers } : {}),
@@ -1341,6 +1352,9 @@ export default function (pi: ExtensionAPI) {
 
 	const config = loadConfig(process.cwd());
 	debug("loadConfig:", JSON.stringify(config));
+
+	// Merge config `models` overrides into the baked-in defaults before registration.
+	MODELS = buildModels(mergeModels(DEFAULT_MODELS, config.models));
 
 	// Reset shared session on pi session lifecycle events
 	const clearSession = (event: string) => {

@@ -23,7 +23,7 @@ pi install npm:pi-claude-bridge
 
 ## Provider
 
-Use `/model` to select `claude-bridge/claude-opus-4-7`, `claude-bridge/claude-opus-4-6`, `claude-bridge/claude-sonnet-4-6`, or `claude-bridge/claude-haiku-4-5`.
+Use `/model` to select `claude-bridge/claude-opus-4-8`, `claude-bridge/claude-opus-4-7`, `claude-bridge/claude-opus-4-6`, `claude-bridge/claude-sonnet-4-6`, or `claude-bridge/claude-haiku-4-5`.
 
 Behind the scenes, pi's tools are bridged to Claude Code but it should all work like normal in pi. Bash commands get a 120-second default timeout (matching Claude Code's default) since pi's bash has no timeout by default. Skills in pi are copied over to Claude Code's system prompt so should work as they would with any other pi provider.
 
@@ -62,7 +62,11 @@ Config: `~/.pi/agent/claude-bridge.json` (global) or `.pi/claude-bridge.json` (p
   "provider": {
     "strictMcpConfig": true,
     "pathToClaudeCodeExecutable": "/home/you/.nix-profile/bin/claude"
-  }
+  },
+  "models": [
+    { "id": "claude-opus-4-9" },
+    { "id": "claude-sonnet-4-6", "maxTokens": 96000 }
+  ]
 }
 ```
 
@@ -85,6 +89,17 @@ This is **not configurable**. Anthropic classifies third-party clients by shape-
 - `settingSources` — CC filesystem settings to load; only applied when `appendSystemPrompt` is `false`.
 - `strictMcpConfig` — block MCP servers from `~/.claude.json` / `.mcp.json` (default `true`). Cloud MCP (Gmail/Drive via claude.ai OAuth) is always blocked.
 - `pathToClaudeCodeExecutable` — path to the `claude` binary. Required on **NixOS** (and other non-FHS systems) where the SDK's bundled musl/glibc binaries can't run. Set to your Nix-installed binary, e.g. `"/home/you/.nix-profile/bin/claude"`.
+
+### Models
+
+The bridge ships its own baked-in list of Claude models (`DEFAULT_MODELS` in `src/models.ts`), so models are available regardless of which pi-ai version the host pi bundles. The `models` field lets you add or override entries without waiting on a host-pi or extension update — handy for using a brand-new Claude model the day it ships.
+
+Each entry needs an `id`; all other fields (`name`, `reasoning`, `input`, `contextWindow`, `maxTokens`, `thinkingLevelMap`) are optional.
+
+- **New id → prepended.** An id not in the defaults is added to the front of the list, so it becomes the overall default and wins the shortcut resolution (e.g. `{ "id": "claude-opus-4-9" }` makes `opus` resolve to `claude-opus-4-9`). Omitted fields fall back to sane defaults (`name`=id, `reasoning`=true, `input`=`["text","image"]`, `contextWindow`=200000, `maxTokens`=64000).
+- **Matching id → overrides in place.** An id that already exists overrides only the fields you provide and keeps its position (e.g. `{ "id": "claude-sonnet-4-6", "maxTokens": 96000 }` just bumps sonnet's max output tokens).
+
+Global entries are applied first, then project entries, so a project `.pi/claude-bridge.json` wins on id collisions.
 
 ## Tests
 
