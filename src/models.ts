@@ -18,14 +18,24 @@ export interface BridgeModel {
 // Metadata taken from pi-ai 0.77.0. Note opus-4-6 maps xhigh→max while
 // 4-7/4-8 map xhigh→xhigh; sonnet/haiku carry no map (generic fallback applies).
 //
-// contextWindow is 200K (not the models' 1M ceiling) ON PURPOSE: the 1M window
-// is a gated beta (`context-1m-2025-08-07`) that the bridge does not enable, so
-// the effective limit through the Claude Code binary is 200K. pi's shouldCompact
-// triggers at `contextWindow - reserveTokens`, and the bridge disables CC's own
-// auto-compact (DISABLE_AUTO_COMPACT=1) — so advertising 1M made pi let the prompt
-// grow past 200K, yielding "Prompt is too long" with no compaction. Accounts with
-// 1M access can opt back up per-model via claude-bridge.json `models`.
+// contextWindow defaults to 200K (not the models' 1M ceiling) ON PURPOSE. pi sizes
+// compaction to contextWindow (shouldCompact: tokens > contextWindow - reserve) and
+// the bridge disables CC's own auto-compact (DISABLE_AUTO_COMPACT=1), so advertising a
+// window larger than what Claude Code actually grants makes pi let the prompt grow past
+// the real ceiling → "Prompt is too long" with no compaction. The bridge DOES send the
+// context-1m-2025-08-07 beta when a model is configured >200K (see enable1mContext in
+// index.ts), so opus-4-7 / sonnet-4-6 CAN be opted up to their real 1M via
+// claude-bridge.json `models`.
+//
+// EXCEPTION — claude-opus-4-8 stays 200K even though it's a 1M model: its 1M is gated
+// behind a Claude Code Statsig experiment (`tengu_amber_redwood2`, hardcoded for that
+// id in the CLI binary) that is active in interactive Claude Code but NOT on the
+// headless/SDK path the bridge uses — so the server hard-caps it at 200K here, beta or
+// not. Opting it up in config just reintroduces the overflow. Recheck after CC updates;
+// once the rollout reaches the SDK surface, bump it like the others. See
+// elidickinson/pi-claude-bridge#22.
 export const DEFAULT_MODELS: BridgeModel[] = [
+	// opus-4-8: leave at 200K — Statsig-gated 1M not yet on the SDK path (see note above).
 	{ id: "claude-opus-4-8", name: "Claude Opus 4.8", reasoning: true, input: ["text", "image"], contextWindow: 200_000, maxTokens: 128_000, thinkingLevelMap: { xhigh: "xhigh" } },
 	{ id: "claude-opus-4-7", name: "Claude Opus 4.7", reasoning: true, input: ["text", "image"], contextWindow: 200_000, maxTokens: 128_000, thinkingLevelMap: { xhigh: "xhigh" } },
 	{ id: "claude-opus-4-6", name: "Claude Opus 4.6", reasoning: true, input: ["text", "image"], contextWindow: 200_000, maxTokens: 128_000, thinkingLevelMap: { xhigh: "max" } },

@@ -94,12 +94,39 @@ This is **not configurable**. Anthropic classifies third-party clients by shape-
 
 The bridge ships its own baked-in list of Claude models (`DEFAULT_MODELS` in `src/models.ts`), so models are available regardless of which pi-ai version the host pi bundles. The `models` field lets you add or override entries without waiting on a host-pi or extension update — handy for using a brand-new Claude model the day it ships.
 
-Each entry needs an `id`; all other fields (`name`, `reasoning`, `input`, `contextWindow`, `maxTokens`, `thinkingLevelMap`) are optional.
+**Baked-in defaults** (the `opus` shortcut resolves to the first opus, currently 4.8):
+
+| id | context window | max output |
+|---|---|---|
+| `claude-opus-4-8` | 200K | 128K |
+| `claude-opus-4-7` | 200K | 128K |
+| `claude-opus-4-6` | 200K | 128K |
+| `claude-sonnet-4-6` | 200K | 64K |
+| `claude-haiku-4-5` | 200K | 64K |
+
+Run `pi --list-models | grep claude-bridge` any time to see the **effective** list (defaults merged with your overrides) — that's the runtime source of truth.
+
+**Override behavior.** Each entry needs an `id`; all other fields (`name`, `reasoning`, `input`, `contextWindow`, `maxTokens`, `thinkingLevelMap`) are optional.
 
 - **New id → prepended.** An id not in the defaults is added to the front of the list, so it becomes the overall default and wins the shortcut resolution (e.g. `{ "id": "claude-opus-4-9" }` makes `opus` resolve to `claude-opus-4-9`). Omitted fields fall back to sane defaults (`name`=id, `reasoning`=true, `input`=`["text","image"]`, `contextWindow`=200000, `maxTokens`=64000).
 - **Matching id → overrides in place.** An id that already exists overrides only the fields you provide and keeps its position (e.g. `{ "id": "claude-sonnet-4-6", "maxTokens": 96000 }` just bumps sonnet's max output tokens).
 
 Global entries are applied first, then project entries, so a project `.pi/claude-bridge.json` wins on id collisions.
+
+#### Context window (200K default + larger windows)
+
+Every model defaults to a **200K** `contextWindow` — the window Claude Code grants without the 1M beta. This is deliberate: pi sizes compaction to `contextWindow` and the bridge disables Claude Code's own auto-compaction, so advertising a window larger than Claude Code actually grants makes pi let the prompt grow past the real ceiling, yielding `Prompt is too long` with no compaction.
+
+To use a model's larger window, raise its `contextWindow` above 200K in config — the bridge then sends the `context-1m-2025-08-07` beta so Claude Code accepts the bigger prompt (requires a plan with 1M access in Claude Code, e.g. Max). Cap it wherever you want pi to compact (500K is a good cost-bounded middle ground):
+
+```json
+{ "models": [
+  { "id": "claude-opus-4-7", "contextWindow": 500000 },
+  { "id": "claude-opus-4-6", "contextWindow": 500000 }
+] }
+```
+
+> **opus-4-8 exception:** Claude Opus 4.8's 1M window is gated behind a Claude Code rollout experiment (`tengu_amber_redwood2`) that is active in interactive Claude Code but **not yet on the headless/SDK path the bridge uses**, so it is server-capped at 200K here regardless of the beta — raising its `contextWindow` just reintroduces `Prompt is too long`. Leave opus-4-8 at 200K and use opus-4-7 for large-context work; recheck after Claude Code updates, then bump it like the others. (See [issue #22](https://github.com/elidickinson/pi-claude-bridge/issues/22).)
 
 ## Tests
 
