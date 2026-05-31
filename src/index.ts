@@ -551,8 +551,13 @@ function updateUsage(output: AssistantMessage, usage: Record<string, number | un
 // --- Effort level mapping ---
 // Pi reasoning levels → CC SDK effort levels
 
+// xhigh falls back to "high" (not "max") for models without a thinkingLevelMap:
+// CC's "max" effort is only valid on Opus 4.6+/Sonnet 4.6, so a generic "max"
+// would be invalid on e.g. Haiku. This matches pi-ai's anthropic provider, which
+// maps unmapped xhigh→high. Models that do support more (opus-4-6 max, 4-7/4-8
+// xhigh) carry their own thinkingLevelMap and take precedence over this table.
 const REASONING_TO_EFFORT: Record<string, EffortLevel> = {
-	minimal: "low", low: "low", medium: "medium", high: "high", xhigh: "max",
+	minimal: "low", low: "low", medium: "medium", high: "high", xhigh: "high",
 };
 
 // --- Provider helpers: misc ---
